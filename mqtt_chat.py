@@ -14,7 +14,7 @@ if not DOUBAO_API_KEY:
     exit(1)
 
 # 初始化 OpenAI 客户端以连接豆包 API
-client = OpenAI(
+openai_client = OpenAI(
     api_key=DOUBAO_API_KEY,
     base_url="https://ark.cn-beijing.volces.com/api/v3"
 )
@@ -26,6 +26,7 @@ BASE_TOPIC = "doubao/chat"
 SUBSCRIBE_TOPIC = f"{BASE_TOPIC}/sub"
 PUBLISH_TOPIC = f"{BASE_TOPIC}/pub"
 CLIENT_ID = f"doubao-mqtt-{uuid.uuid4()}"
+MODEL_ID = "ep-20250411160545-vmvmf"  # 使用你的豆包推理接入点 ID
 
 # 存储会话历史
 conversations = {}
@@ -48,8 +49,8 @@ def get_doubao_response(user_id, message):
             conversations[user_id] = conversations[user_id][-5:]
 
         # 调用豆包 API 进行流式响应
-        response_stream = client.chat.completions.create(
-            model="ep-20250411160545-vmvmf",  # 使用你的豆包推理接入点 ID
+        response_stream = openai_client.chat.completions.create(
+            model=MODEL_ID,
             messages=conversations[user_id],
             stream=True
         )
@@ -59,8 +60,8 @@ def get_doubao_response(user_id, message):
             if chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
                 full_response += content
-                # 直接流式输出部分响应
-                print(content, end='', flush=True)
+                # 注释掉这行，不打印部分响应内容
+                # print(content, end='', flush=True)
 
         # 将 AI 响应添加到会话历史
         conversations[user_id].append({"role": "assistant", "content": full_response})
@@ -71,7 +72,6 @@ def get_doubao_response(user_id, message):
         return full_response
     except Exception as e:
         error_msg = f"豆包 API 错误: {str(e)}"
-        # 直接输出错误信息
         print(error_msg)
         # 发布错误响应到 pub 主题
         mqtt_client.publish(PUBLISH_TOPIC, error_msg)
@@ -82,6 +82,13 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
     """连接到 MQTT 服务器时的回调函数"""
     if reason_code == 0:
         client.subscribe(SUBSCRIBE_TOPIC)
+        print(f"\033[91m:连接成功！\033[0m")
+        print(f"服务器: {MQTT_BROKER}:{MQTT_PORT}")
+        print(f"订阅主题: {SUBSCRIBE_TOPIC}")
+        print(f"发布主题: {PUBLISH_TOPIC}")
+        print(f"API URL: {openai_client.base_url}")
+        print(f"模型 ID: {MODEL_ID}")
+        print("\033[91m: Ctrl+C 退出\033[0m") 
     else:
         print(f"MQTT 连接失败，错误码: {reason_code}")
 
@@ -96,8 +103,8 @@ def on_message(client, userdata, msg):
         user_id = "anonymous"
         # 获取豆包的响应
         get_doubao_response(user_id, message)
-        # 换行以区分不同消息
-        print()
+        # 注释掉这行，不打印空行
+        # print()
     except Exception as e:
         print(f"处理消息时出错: {str(e)}")
 
@@ -122,4 +129,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
